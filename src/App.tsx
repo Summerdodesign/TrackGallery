@@ -323,9 +323,8 @@ export default function App() {
   }, []);
 
   const handleContinueUpload = useCallback(() => {
-    // Save current to history if not already saved
-    if (state.trackData && canvasRef.current) {
-      const thumbnail = canvasRef.current.toDataURL('image/png', 0.3);
+    if (state.trackData) {
+      const thumbnail = generateThumbnail();
       const item: HistoryItem = {
         id: Date.now().toString(),
         name: state.trackData.name || 'GPX 轨迹',
@@ -336,7 +335,6 @@ export default function App() {
         geoFeatures: state.geoFeatures,
       };
       setHistory(prev => {
-        // Avoid duplicates
         if (prev.some(h => h.name === item.name && h.trackData.trackPoints.length === item.trackData.trackPoints.length)) return prev;
         return [item, ...prev];
       });
@@ -368,10 +366,25 @@ export default function App() {
   }, []);
 
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [saveToast, setSaveToast] = useState(false);
+
+  /** 生成小尺寸缩略图，避免 localStorage 爆掉 */
+  const generateThumbnail = useCallback((): string => {
+    const src = canvasRef.current;
+    if (!src) return '';
+    const thumbSize = 200;
+    const thumb = document.createElement('canvas');
+    thumb.width = thumbSize;
+    thumb.height = thumbSize;
+    const ctx = thumb.getContext('2d');
+    if (!ctx) return '';
+    ctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, thumbSize, thumbSize);
+    return thumb.toDataURL('image/jpeg', 0.6);
+  }, []);
 
   const handleSaveProject = useCallback(() => {
-    if (!state.trackData || !canvasRef.current) return;
-    const thumbnail = canvasRef.current.toDataURL('image/png', 0.3);
+    if (!state.trackData) return;
+    const thumbnail = generateThumbnail();
     const id = currentProjectId || Date.now().toString();
     const item: HistoryItem = {
       id,
@@ -387,7 +400,10 @@ export default function App() {
       return [item, ...filtered];
     });
     setCurrentProjectId(id);
-  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId]);
+    // 显示保存成功提示
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
+  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail]);
 
   const handleGoHome = useCallback(() => {
     // Save current project first, then go to upload
@@ -424,6 +440,17 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* 保存成功提示 */}
+      {saveToast && (
+        <div style={{
+          position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
+          padding: '10px 24px', borderRadius: 8, background: 'rgba(0,200,100,0.9)',
+          color: '#fff', fontSize: 14, fontWeight: 600, zIndex: 999,
+        }}>
+          ✓ 项目已保存
+        </div>
+      )}
 
       {/* Error banner */}
       {state.error && (
