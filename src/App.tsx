@@ -347,6 +347,7 @@ export default function App() {
 
   const handleLoadHistory = useCallback((item: HistoryItem) => {
     bboxRef.current = null;
+    setCurrentProjectId(item.id);
     setState({
       step: 'colorScheme',
       gpxFile: null,
@@ -366,23 +367,61 @@ export default function App() {
     setHistory(prev => prev.filter(h => h.id !== id));
   }, []);
 
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
+  const handleSaveProject = useCallback(() => {
+    if (!state.trackData || !canvasRef.current) return;
+    const thumbnail = canvasRef.current.toDataURL('image/png', 0.3);
+    const id = currentProjectId || Date.now().toString();
+    const item: HistoryItem = {
+      id,
+      name: state.trackData.name || 'GPX 轨迹',
+      thumbnail,
+      trackData: state.trackData,
+      colorScheme: state.colorScheme,
+      annotations: state.annotations,
+      geoFeatures: state.geoFeatures,
+    };
+    setHistory(prev => {
+      const filtered = prev.filter(h => h.id !== id);
+      return [item, ...filtered];
+    });
+    setCurrentProjectId(id);
+  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId]);
+
+  const handleGoHome = useCallback(() => {
+    // Save current project first, then go to upload
+    handleSaveProject();
+    setState(initialState);
+    bboxRef.current = null;
+    setCurrentProjectId(null);
+  }, [handleSaveProject]);
+
   const stats = state.trackData ? calculateRouteStats(state.trackData) : null;
 
   return (
     <div style={containerStyle}>
       <header style={headerStyle}>
-        <h1 style={titleStyle}>GPX 风格化地图生成器</h1>
+        <h1 style={titleStyle}>轨迹画廊 TrackGallery</h1>
       </header>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <StepFlow currentStep={state.step} onStepChange={handleStepChange} />
         {state.step !== 'upload' && (
-          <button onClick={handleContinueUpload} style={{
-            padding: '5px 12px', borderRadius: 6, border: '1px solid #555',
-            background: 'transparent', color: '#aaa', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
-          }}>
-            ＋ 新建项目
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleSaveProject} style={{
+              padding: '5px 12px', borderRadius: 6, border: '1px solid #4a9eff',
+              background: 'transparent', color: '#4a9eff', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>
+              💾 保存项目
+            </button>
+            <button onClick={handleGoHome} style={{
+              padding: '5px 12px', borderRadius: 6, border: '1px solid #555',
+              background: 'transparent', color: '#aaa', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>
+              🏠 返回主页
+            </button>
+          </div>
         )}
       </div>
 

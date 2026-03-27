@@ -60,7 +60,7 @@ function createGpxFile(content: string = VALID_GPX): File {
 describe('App', () => {
   it('renders with upload step initially', () => {
     render(<App />);
-    expect(screen.getByText('GPX 风格化地图生成器')).toBeInTheDocument();
+    expect(screen.getByText('轨迹画廊 TrackGallery')).toBeInTheDocument();
     expect(screen.getByTestId('upload-zone')).toBeInTheDocument();
     expect(screen.getByTestId('step-upload')).toBeInTheDocument();
   });
