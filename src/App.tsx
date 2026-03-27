@@ -22,7 +22,8 @@ const CANVAS_SIZE = { width: 4000, height: 4000 };
 interface HistoryItem {
   id: string;
   name: string;
-  thumbnail: string; // data URL
+  projectName: string;
+  thumbnail: string;
   trackData: TrackData;
   colorScheme: ColorScheme;
   annotations: RouteAnnotation[];
@@ -55,6 +56,7 @@ export default function App() {
   const [waterWidth, setWaterWidth] = useState(4);
   const [smoothness, setSmoothness] = useState(0);
   const [annotationFontSize, setAnnotationFontSize] = useState(108);
+  const [projectName, setProjectName] = useState('');
   const [exportLayers, setExportLayers] = useState<import('./components/ExportPanel').ExportLayers>({ background: true, route: true, roads: true, water: true });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapSectionRef = useRef<HTMLDivElement>(null);
@@ -173,6 +175,7 @@ export default function App() {
         isLoading: false,
         step: 'colorScheme',
       }));
+      setProjectName(trackData.name || 'GPX 轨迹');
 
       // Auto-scroll to map area after render
       setTimeout(() => {
@@ -328,6 +331,7 @@ export default function App() {
       const item: HistoryItem = {
         id: Date.now().toString(),
         name: state.trackData.name || 'GPX 轨迹',
+        projectName,
         thumbnail,
         trackData: state.trackData,
         colorScheme: state.colorScheme,
@@ -340,12 +344,14 @@ export default function App() {
       });
     }
     setState(initialState);
+    setProjectName('');
     bboxRef.current = null;
   }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures]);
 
   const handleLoadHistory = useCallback((item: HistoryItem) => {
     bboxRef.current = null;
     setCurrentProjectId(item.id);
+    setProjectName(item.projectName || item.name);
     setState({
       step: 'colorScheme',
       gpxFile: null,
@@ -389,6 +395,7 @@ export default function App() {
     const item: HistoryItem = {
       id,
       name: state.trackData.name || 'GPX 轨迹',
+      projectName,
       thumbnail,
       trackData: state.trackData,
       colorScheme: state.colorScheme,
@@ -403,7 +410,7 @@ export default function App() {
     // 显示保存成功提示
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2000);
-  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail]);
+  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail, projectName]);
 
   const handleGoHome = useCallback(() => {
     // Save current project first, then go to upload
@@ -493,7 +500,7 @@ export default function App() {
                       )}
                       <div style={{ padding: '8px 10px' }}>
                         <div style={{ fontSize: 13, color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {item.name}
+                          {item.projectName || item.name}
                         </div>
                         <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
                           {item.trackData.trackPoints.length} 点 · {item.annotations.length} 标注
@@ -534,7 +541,7 @@ export default function App() {
           <div ref={mapSectionRef} style={mapAreaStyle}>
             <div ref={posterRef}>
               <PosterLayout
-                title={state.trackData.name || 'GPX 轨迹'}
+                title={projectName || state.trackData.name || 'GPX 轨迹'}
                 stats={stats}
                 colorScheme={state.colorScheme}
                 canvasRef={canvasRef}
@@ -552,6 +559,22 @@ export default function App() {
             {state.step !== 'colorScheme' && (
               <button onClick={handleGoBack} style={backBtnStyle}>← 上一步</button>
             )}
+
+            {/* 项目名称 */}
+            <div style={{ padding: '12px 16px 4px' }}>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>项目名称</div>
+              <input
+                type="text"
+                value={projectName}
+                onChange={e => setProjectName(e.target.value)}
+                placeholder="输入项目名称…"
+                style={{
+                  width: '100%', padding: '6px 10px', borderRadius: 6,
+                  border: '1px solid #555', background: '#2a2a2a', color: '#eee',
+                  fontSize: 14, boxSizing: 'border-box',
+                }}
+              />
+            </div>
 
             {state.step === 'colorScheme' && (
               <>
