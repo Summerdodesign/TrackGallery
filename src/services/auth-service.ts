@@ -1,42 +1,67 @@
 import { supabase } from './supabase';
 import type { UserProfile, UserRole } from './supabase';
 
-export async function signUp(username: string, password: string, role: UserRole): Promise<{ user: UserProfile | null; error: string | null }> {
-  // Use email-style auth with username@trackgallery.local
+/**
+ * 确保 profile 存在，不存在则创建
+ */
+async function ensureProfile(userId: string, username: string, role: UserRole = 'user'): Promise<UserProfile | null> {
+  // 先尝试读取
+  const { data: existing } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  if (existing) {
+    return { id: existing.id, username: existing.username, role: existing.role };
+  }
+
+  // 不存在则插入
+  const { data: created, error } = await supabase
+    .from('profiles')
+    .upsert({ id: userId, username, role })
+    .select()
+    .single();
+
+  if (error || !created) return null;
+  return { id: created.id, username: created.username, role: created.role };
+}
+
+export async function signUp(
+  username: string, password: string, role: UserRole
+): Promise<{ user: UserProfile | null; error: string | null }> {
   const email = `${username.toLowerCase()}@trackgallery.local`;
 
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) return { user: null, error: error.message };
   if (!data.user) return { user: null, error: '注册失败' };
 
-  // Save profile with role
-  const { error: profileError } = await supabase.from('profiles').insert({
-    id: data.user.id,
-    username,
-    role,
-  });
-  if (profileError) return { user: null, error: profileError.message };
-
-  return { user: { id: data.user.id, username, role }, error: null };
+  const profile = await ensureProfile(data.user.id, username, role);
+  if (!profile) {
+    // Profile 创建失败但 auth 成功，直接返回基本信息
+    return { user: { id: data.user.id, username, role }, error: null };
+  }
+  return { user: profile, error: null };
 }
 
-export async function signIn(username: string, password: string): Promise<{ user: UserProfile | null; error: string | null }> {
+export async function signIn(
+  username: string, password: string
+): Promise<{ user: UserProfile | null; error: string | null }> {
   const email = `${username.toLowerCase()}@trackgallery.local`;
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email, password,
+  });
   if (error) return { user: null, error: '用户名或密码错误' };
   if (!data.user) return { user: null, error: '登录失败' };
 
-  // Fetch profile
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', data.user.id)
-    .single();
-
-  if (profileError || !profile) return { user: null, error: '用户信息获取失败' };
-
-  return { user: { id: profile.id, username: profile.username, role: profile.role }, error: null };
+  // 尝试获取 profile，不存在则自动创建
+  const profile = await ensureProfile(data.user.id, username);
+  if (!profile) {
+    // 即使 profile 查询失败也让用户进去
+    return { user: { id: data.user.id, username, role: 'user' }, error: null };
+  }
+  return { user: profile, error: null };
 }
 
 export async function signOut(): Promise<void> {
@@ -53,6 +78,10 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
     .eq('id', user.id)
     .single();
 
-  if (!profile) return null;
+  if (!profile) {
+    // 有 auth 但没 profile，用邮箱前缀作为用户名
+    const username = user.email?.split('@')[0] || 'user';
+    return { id: user.id, username, role: 'user' };
+  }
   return { id: profile.id, username: profile.username, role: profile.role };
 }
