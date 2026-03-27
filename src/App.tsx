@@ -7,6 +7,7 @@ import { AnnotationEditor, findNearestTrackPoint } from './components/Annotation
 import { BatchAnnotationImport } from './components/BatchAnnotationImport';
 import { PosterLayout } from './components/PosterLayout';
 import { StepFlow } from './components/StepFlow';
+import { LoginPage } from './components/LoginPage';
 import { calculateBoundingBox, expandBoundingBox, calculateZoomLevel, geoToPixel } from './utils/viewport-calculator';
 import { calculateRouteStats } from './utils/route-stats';
 import { fetchRoads, fetchWaterways } from './services/overpass-service';
@@ -14,6 +15,10 @@ import { MapRenderer } from './renderers/map-renderer';
 import { smoothTrack } from './utils/track-smoother';
 import { getNextStep, getPrevStep } from './utils/step-flow';
 import { ExportPanel } from './components/ExportPanel';
+import { getCurrentUser, signOut } from './services/auth-service';
+import { saveProject, loadProjects, deleteProject } from './services/project-service';
+import type { UserProfile } from './services/supabase';
+import type { ProjectRecord } from './services/project-service';
 import type { ExportSettings } from './components/ExportPanel';
 import type { FlowStep } from './types';
 
@@ -42,6 +47,9 @@ const initialState: AppState = {
 };
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [cloudProjects, setCloudProjects] = useState<ProjectRecord[]>([]);
   const [state, setState] = useState<AppState>(initialState);
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
@@ -73,6 +81,20 @@ export default function App() {
     }
     return bboxRef.current;
   }, []);
+
+  // Check auth on mount
+  useEffect(() => {
+    getCurrentUser().then(user => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+    });
+  }, []);
+
+  // Load cloud projects when user changes
+  useEffect(() => {
+    if (!currentUser) { setCloudProjects([]); return; }
+    loadProjects(currentUser).then(({ projects }) => setCloudProjects(projects));
+  }, [currentUser]);
 
   // Persist history to localStorage
   useEffect(() => {
@@ -337,12 +359,20 @@ export default function App() {
     return thumb.toDataURL('image/jpeg', 0.6);
   }, []);
 
-  const handleSaveProject = useCallback(() => {
+  const handleSaveProject = useCallback(async () => {
     if (!state.trackData) return;
     const thumbnail = generateThumbnail();
-    const id = currentProjectId || Date.now().toString();
+    const projectData = {
+      trackData: state.trackData,
+      colorScheme: state.colorScheme,
+      annotations: state.annotations,
+      geoFeatures: state.geoFeatures,
+    };
+
+    // Save to localStorage (local history)
+    const localId = currentProjectId || Date.now().toString();
     const item: HistoryItem = {
-      id,
+      id: localId,
       name: state.trackData.name || 'GPX 轨迹',
       projectName,
       thumbnail,
@@ -352,29 +382,106 @@ export default function App() {
       geoFeatures: state.geoFeatures,
     };
     setHistory(prev => {
-      const filtered = prev.filter(h => h.id !== id);
+      const filtered = prev.filter(h => h.id !== localId);
       return [item, ...filtered];
     });
-    setCurrentProjectId(id);
-    // 显示保存成功提示
+
+    // Save to Supabase if logged in
+    if (currentUser) {
+      const { id: cloudId, error } = await saveProject(
+        currentUser.id,
+        currentProjectId?.startsWith('cloud-') ? currentProjectId.replace('cloud-', '') : null,
+        projectName || state.trackData.name || 'GPX 轨迹',
+        projectData,
+        thumbnail,
+      );
+      if (cloudId) {
+        setCurrentProjectId('cloud-' + cloudId);
+        // Refresh cloud projects
+        loadProjects(currentUser).then(({ projects }) => setCloudProjects(projects));
+      }
+      if (error) {
+        setState(prev => ({ ...prev, error: '云端保存失败: ' + error }));
+      }
+    }
+
+    setCurrentProjectId(localId);
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2000);
-  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail, projectName]);
+  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail, projectName, currentUser]);
 
   const handleGoHome = useCallback(() => {
-    // Save current project first, then go to upload
     handleSaveProject();
     setState(initialState);
     bboxRef.current = null;
     setCurrentProjectId(null);
+    setProjectName('');
   }, [handleSaveProject]);
+
+  const handleLogout = useCallback(async () => {
+    await signOut();
+    setCurrentUser(null);
+    setCloudProjects([]);
+  }, []);
+
+  const handleLoadCloudProject = useCallback((project: ProjectRecord) => {
+    try {
+      const data = JSON.parse(project.data);
+      bboxRef.current = null;
+      setCurrentProjectId('cloud-' + project.id);
+      setProjectName(project.project_name);
+      setState({
+        step: 'colorScheme',
+        gpxFile: null,
+        trackData: data.trackData,
+        colorScheme: data.colorScheme || PRESET_SCHEMES[0],
+        annotations: data.annotations || [],
+        geoFeatures: data.geoFeatures || [],
+        isLoading: false,
+        error: null,
+      });
+    } catch {
+      setState(prev => ({ ...prev, error: '项目数据解析失败' }));
+    }
+  }, []);
+
+  const handleDeleteCloudProject = useCallback(async (projectId: string) => {
+    const { error } = await deleteProject(projectId);
+    if (error) { setState(prev => ({ ...prev, error })); return; }
+    if (currentUser) {
+      loadProjects(currentUser).then(({ projects }) => setCloudProjects(projects));
+    }
+  }, [currentUser]);
 
   const stats = state.trackData ? calculateRouteStats(state.trackData) : null;
 
   return (
     <div style={containerStyle}>
+      {/* Auth loading */}
+      {authLoading && (
+        <div style={{ textAlign: 'center', padding: '80px 0', color: '#888' }}>加载中…</div>
+      )}
+
+      {/* Login page */}
+      {!authLoading && !currentUser && (
+        <LoginPage onLogin={(user) => setCurrentUser(user)} />
+      )}
+
+      {/* Main app (logged in) */}
+      {!authLoading && currentUser && (<>
       <header style={headerStyle}>
-        <h1 style={titleStyle}>轨迹画廊 TrackGallery</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h1 style={titleStyle}>轨迹画廊 TrackGallery</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12, color: '#888' }}>
+              {currentUser.username} ({currentUser.role === 'admin' ? '管理员' : '用户'})
+            </span>
+            <button onClick={handleLogout} style={{
+              padding: '4px 10px', borderRadius: 4, border: '1px solid #555',
+              background: 'transparent', color: '#aaa', fontSize: 11, cursor: 'pointer',
+            }}>退出</button>
+          </div>
+        </div>
       </header>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -457,6 +564,46 @@ export default function App() {
                       </div>
                     </div>
                     <button onClick={() => handleDeleteHistory(item.id)} style={{
+                      width: '100%', padding: '5px 0', border: 'none', borderTop: '1px solid #333',
+                      background: 'transparent', color: '#ff6b6b', fontSize: 11, cursor: 'pointer',
+                    }}>删除</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 云端项目列表 */}
+          {cloudProjects.length > 0 && (
+            <div style={{ marginTop: 32 }}>
+              <div style={{ fontSize: 15, color: '#aaa', marginBottom: 12 }}>
+                {currentUser?.role === 'admin' ? '所有用户的云端项目' : '我的云端项目'}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                {cloudProjects.map(p => (
+                  <div key={p.id} style={{
+                    borderRadius: 8, border: '1px solid #333', overflow: 'hidden',
+                    background: '#1e1e1e', cursor: 'pointer', transition: 'border-color 0.2s',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#4a9eff')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#333')}
+                  >
+                    <div onClick={() => handleLoadCloudProject(p)}>
+                      {p.thumbnail && (
+                        <img src={p.thumbnail} alt={p.project_name}
+                          style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block', background: '#111' }} />
+                      )}
+                      <div style={{ padding: '8px 10px' }}>
+                        <div style={{ fontSize: 13, color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {p.project_name}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                          {currentUser?.role === 'admin' && p.username && <span style={{ color: '#4a9eff' }}>{p.username} · </span>}
+                          {new Date(p.updated_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeleteCloudProject(p.id)} style={{
                       width: '100%', padding: '5px 0', border: 'none', borderTop: '1px solid #333',
                       background: 'transparent', color: '#ff6b6b', fontSize: 11, cursor: 'pointer',
                     }}>删除</button>
@@ -594,6 +741,7 @@ export default function App() {
         </div>
         </div>
       )}
+    </>)}
     </div>
   );
 }
