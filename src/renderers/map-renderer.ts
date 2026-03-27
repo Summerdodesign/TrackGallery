@@ -165,7 +165,7 @@ export class MapRenderer {
    * 绘制途径点层：圆形标记 + 名称标签，起点/终点绘制特殊标记
    * 起点标记坐标 = 第一个轨迹点，终点标记坐标 = 最后一个轨迹点（Property 9）
    */
-  renderWaypointLayer(waypoints: Waypoint[], colorScheme: ColorScheme, trackPoints?: GeoPoint[]): void {
+  renderWaypointLayer(waypoints: Waypoint[], colorScheme: ColorScheme, _trackPoints?: GeoPoint[]): void {
     const config = this.getConfig();
 
     // 绘制普通途径点
@@ -296,36 +296,5 @@ export class MapRenderer {
       ctx.textBaseline = 'bottom';
       ctx.fillText(name, px.x, px.y - 8);
     }
-  }
-
-  private drawSpecialMarker(
-    px: PixelPoint,
-    label: string,
-    _colorScheme: ColorScheme,
-    markerColor: string,
-  ): void {
-    const ctx = this.getContext();
-
-    // 外圈发光
-    ctx.beginPath();
-    ctx.arc(px.x, px.y, 10, 0, Math.PI * 2);
-    ctx.fillStyle = markerColor + '44';
-    ctx.fill();
-
-    // 内圈实心
-    ctx.beginPath();
-    ctx.arc(px.x, px.y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = markerColor;
-    ctx.fill();
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // 标签
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(label, px.x, px.y - 14);
   }
 }

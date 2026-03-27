@@ -63,34 +63,6 @@ export default function App() {
   const posterRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef(new MapRenderer());
 
-  // Render map whenever relevant data changes
-  const renderMap = useCallback((
-    trackData: TrackData,
-    colorScheme: ColorScheme,
-    geoFeatures: GeoFeature[],
-    annotations: RouteAnnotation[],
-    bbox: BoundingBox,
-    rw: number = 2.5,
-    rdw: number = 3,
-    ww: number = 4,
-  ) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const zoomLevel = calculateZoomLevel(bbox, CANVAS_SIZE);
-    const config: RenderConfig = { canvasSize: CANVAS_SIZE, bbox, zoomLevel, routeWidth: rw, roadWidth: rdw, waterWidth: ww };
-
-    const renderer = rendererRef.current;
-    renderer.init(canvas, config);
-    renderer.render({
-      trackData,
-      geoFeatures,
-      colorScheme,
-      annotations,
-      renderConfig: config,
-    });
-  }, []);
-
   // Compute bbox from trackData (memoized via ref to avoid recalc)
   const bboxRef = useRef<BoundingBox | null>(null);
 
@@ -324,29 +296,6 @@ export default function App() {
   const handleRetry = useCallback(() => {
     setState(initialState);
   }, []);
-
-  const handleContinueUpload = useCallback(() => {
-    if (state.trackData) {
-      const thumbnail = generateThumbnail();
-      const item: HistoryItem = {
-        id: Date.now().toString(),
-        name: state.trackData.name || 'GPX 轨迹',
-        projectName,
-        thumbnail,
-        trackData: state.trackData,
-        colorScheme: state.colorScheme,
-        annotations: state.annotations,
-        geoFeatures: state.geoFeatures,
-      };
-      setHistory(prev => {
-        if (prev.some(h => h.name === item.name && h.trackData.trackPoints.length === item.trackData.trackPoints.length)) return prev;
-        return [item, ...prev];
-      });
-    }
-    setState(initialState);
-    setProjectName('');
-    bboxRef.current = null;
-  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures]);
 
   const handleLoadHistory = useCallback((item: HistoryItem) => {
     bboxRef.current = null;

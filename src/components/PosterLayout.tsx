@@ -17,8 +17,6 @@ export function PosterLayout({
   stats,
   colorScheme,
   canvasRef,
-  hasWaypoints = false,
-  hasAnnotations = false,
   onCanvasClick,
   canvasCursor,
 }: PosterLayoutProps) {

@@ -6,7 +6,7 @@ import type { ColorScheme } from '../types';
 
 const defaultScheme: ColorScheme = { ...PRESET_SCHEMES[0] };
 
-function renderEditor(overrides?: Partial<{ colorScheme: ColorScheme; onChange: ReturnType<typeof vi.fn>; onRouteWidthChange: ReturnType<typeof vi.fn> }>) {
+function renderEditor(overrides?: Partial<{ colorScheme: ColorScheme; onChange: (s: ColorScheme) => void; onRouteWidthChange: (w: number) => void }>) {
   const onChange = overrides?.onChange ?? vi.fn();
   const onRouteWidthChange = overrides?.onRouteWidthChange ?? vi.fn();
   const colorScheme = overrides?.colorScheme ?? defaultScheme;
@@ -14,17 +14,17 @@ function renderEditor(overrides?: Partial<{ colorScheme: ColorScheme; onChange: 
     <ColorSchemeEditor
       colorScheme={colorScheme}
       presets={PRESET_SCHEMES}
-      onChange={onChange}
+      onChange={onChange as (s: ColorScheme) => void}
       routeWidth={2.5}
-      onRouteWidthChange={onRouteWidthChange}
+      onRouteWidthChange={onRouteWidthChange as (w: number) => void}
       roadWidth={3}
-      onRoadWidthChange={vi.fn()}
+      onRoadWidthChange={vi.fn() as unknown as (w: number) => void}
       waterWidth={4}
-      onWaterWidthChange={vi.fn()}
+      onWaterWidthChange={vi.fn() as unknown as (w: number) => void}
       smoothness={0}
-      onSmoothnessChange={vi.fn()}
+      onSmoothnessChange={vi.fn() as unknown as (v: number) => void}
       annotationFontSize={108}
-      onAnnotationFontSizeChange={vi.fn()}
+      onAnnotationFontSizeChange={vi.fn() as unknown as (s: number) => void}
     />,
   );
   return { onChange, onRouteWidthChange };
