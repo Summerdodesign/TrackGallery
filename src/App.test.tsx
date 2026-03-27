@@ -123,7 +123,7 @@ describe('App', () => {
     fireEvent.click(screen.getByTestId('confirm-annotation-btn'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('export-btn')).toBeInTheDocument();
+      expect(screen.getByText(/导出 PNG/)).toBeInTheDocument();
     });
   });
 

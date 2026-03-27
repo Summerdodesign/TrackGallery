@@ -21,6 +21,8 @@ function renderEditor(overrides?: Partial<{ colorScheme: ColorScheme; onChange: 
       onRoadWidthChange={vi.fn()}
       waterWidth={4}
       onWaterWidthChange={vi.fn()}
+      smoothness={0}
+      onSmoothnessChange={vi.fn()}
     />,
   );
   return { onChange, onRouteWidthChange };

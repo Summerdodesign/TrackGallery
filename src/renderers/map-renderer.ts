@@ -64,6 +64,33 @@ export class MapRenderer {
   }
 
   /**
+   * 按选定图层渲染（用于导出）
+   */
+  renderSelective(data: RenderData, layers: { route: boolean; roads: boolean; water: boolean }, skipBackground = false): void {
+    if (!this.ctx || !this.config) {
+      throw new Error('MapRenderer 未初始化，请先调用 init()');
+    }
+
+    if (!skipBackground) {
+      this.renderBackground(data.colorScheme);
+    }
+
+    // 分别过滤道路和水系
+    if (layers.roads || layers.water) {
+      const features = data.geoFeatures.filter(f =>
+        (f.type === 'road' && layers.roads) || (f.type === 'water' && layers.water)
+      );
+      this.renderContextLayer(features, data.colorScheme, data.renderConfig.roadWidth ?? 3, data.renderConfig.waterWidth ?? 4);
+    }
+
+    if (layers.route) {
+      this.renderRouteLayer(data.trackData.trackPoints, data.colorScheme, data.renderConfig.routeWidth ?? 2.5);
+      this.renderWaypointLayer(data.trackData.waypoints, data.colorScheme, data.trackData.trackPoints);
+      this.renderAnnotationLayer(data.annotations);
+    }
+  }
+
+  /**
    * 使用 ColorScheme 背景色填充画布
    */
   renderBackground(colorScheme: ColorScheme): void {

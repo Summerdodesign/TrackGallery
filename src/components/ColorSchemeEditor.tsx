@@ -12,6 +12,8 @@ export interface ColorSchemeEditorProps {
   onRoadWidthChange: (width: number) => void;
   waterWidth: number;
   onWaterWidthChange: (width: number) => void;
+  smoothness: number;
+  onSmoothnessChange: (value: number) => void;
 }
 
 /** Color field key → Chinese label mapping (no glow) */
@@ -24,7 +26,7 @@ const COLOR_FIELDS: { key: keyof ColorScheme; label: string }[] = [
   { key: 'titleColor', label: '标题文字颜色' },
 ];
 
-export function ColorSchemeEditor({ colorScheme, presets, onChange, routeWidth, onRouteWidthChange, roadWidth, onRoadWidthChange, waterWidth, onWaterWidthChange }: ColorSchemeEditorProps) {
+export function ColorSchemeEditor({ colorScheme, presets, onChange, routeWidth, onRouteWidthChange, roadWidth, onRoadWidthChange, waterWidth, onWaterWidthChange, smoothness, onSmoothnessChange }: ColorSchemeEditorProps) {
   const handleColorChange = useCallback(
     (key: keyof ColorScheme, value: string) => {
       onChange({ ...colorScheme, [key]: value });
@@ -132,6 +134,11 @@ export function ColorSchemeEditor({ colorScheme, presets, onChange, routeWidth, 
           <label style={{ width: 120, fontSize: 13, color: '#ccc', flexShrink: 0 }}>水系粗细</label>
           <input type="range" data-testid="water-width-slider" min={0.5} max={15} step={0.5} value={waterWidth} onChange={(e) => onWaterWidthChange(parseFloat(e.target.value))} style={{ flex: 1 }} />
           <span style={{ fontSize: 13, color: '#ccc', minWidth: 36, textAlign: 'right' }}>{waterWidth}px</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label style={{ width: 120, fontSize: 13, color: '#ccc', flexShrink: 0 }}>轨迹平滑度</label>
+          <input type="range" data-testid="smoothness-slider" min={0} max={5} step={1} value={smoothness} onChange={(e) => onSmoothnessChange(parseInt(e.target.value))} style={{ flex: 1 }} />
+          <span style={{ fontSize: 13, color: '#ccc', minWidth: 36, textAlign: 'right' }}>{smoothness === 0 ? '原始' : `${smoothness}级`}</span>
         </div>
       </div>
     </div>

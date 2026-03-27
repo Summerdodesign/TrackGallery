@@ -10,8 +10,10 @@ import { calculateBoundingBox, expandBoundingBox, calculateZoomLevel, geoToPixel
 import { calculateRouteStats } from './utils/route-stats';
 import { fetchRoads, fetchWaterways } from './services/overpass-service';
 import { MapRenderer } from './renderers/map-renderer';
-import { exportAsPNG } from './utils/export-module';
+import { smoothTrack } from './utils/track-smoother';
 import { getNextStep } from './utils/step-flow';
+import { ExportPanel } from './components/ExportPanel';
+import type { ExportSettings } from './components/ExportPanel';
 import type { FlowStep } from './types';
 
 const CANVAS_SIZE = { width: 4000, height: 4000 };
@@ -45,6 +47,8 @@ export default function App() {
   const [routeWidth, setRouteWidth] = useState(2.5);
   const [roadWidth, setRoadWidth] = useState(3);
   const [waterWidth, setWaterWidth] = useState(4);
+  const [smoothness, setSmoothness] = useState(0);
+  const [exportLayers, setExportLayers] = useState<import('./components/ExportPanel').ExportLayers>({ background: true, route: true, roads: true, water: true });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapSectionRef = useRef<HTMLDivElement>(null);
   const posterRef = useRef<HTMLDivElement>(null);
@@ -89,12 +93,39 @@ export default function App() {
     return bboxRef.current;
   }, []);
 
-  // Re-render map when colorScheme or annotations change (after initial load)
+  // Re-render map when colorScheme, annotations, or smoothness change
   useEffect(() => {
     if (!state.trackData || state.step === 'upload') return;
     const bbox = getBbox(state.trackData);
-    renderMap(state.trackData, state.colorScheme, state.geoFeatures, state.annotations, bbox, routeWidth, roadWidth, waterWidth);
-  }, [state.colorScheme, state.annotations, state.trackData, state.geoFeatures, state.step, renderMap, getBbox, routeWidth, roadWidth, waterWidth]);
+    const smoothed: TrackData = {
+      ...state.trackData,
+      trackPoints: smoothTrack(state.trackData.trackPoints, smoothness),
+    };
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const zoomLevel = calculateZoomLevel(bbox, CANVAS_SIZE);
+    const config: RenderConfig = {
+      canvasSize: CANVAS_SIZE, bbox, zoomLevel,
+      routeWidth, roadWidth, waterWidth,
+    };
+    const renderer = rendererRef.current;
+    renderer.init(canvas, config);
+
+    const renderData: import('./types').RenderData = {
+      trackData: smoothed,
+      geoFeatures: state.geoFeatures,
+      colorScheme: state.colorScheme,
+      annotations: state.annotations,
+      renderConfig: config,
+    };
+
+    if (state.step === 'export') {
+      renderer.renderSelective(renderData, exportLayers, !exportLayers.background);
+    } else {
+      renderer.render(renderData);
+    }
+  }, [state.colorScheme, state.annotations, state.trackData, state.geoFeatures, state.step, getBbox, routeWidth, roadWidth, waterWidth, smoothness, exportLayers]);
 
   // Handle GPX upload success
   const handleUpload = useCallback(async (trackData: TrackData) => {
@@ -191,31 +222,57 @@ export default function App() {
     if (next) setState(prev => ({ ...prev, step: next }));
   }, []);
 
-  const handleExport = useCallback(async () => {
-    const posterEl = posterRef.current;
-    if (!posterEl) return;
+  const handleExport = useCallback(async (settings: ExportSettings) => {
+    if (!state.trackData) return;
 
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
-      await exportAsPNG(posterEl, {
-        minWidth: 14173,
-        minHeight: 14173,
-        filename: state.trackData?.name || 'gpx-map',
-      });
+      const bbox = getBbox(state.trackData);
+      const exportSize = { width: settings.width, height: settings.height };
+      const zoomLevel = calculateZoomLevel(bbox, exportSize);
+      const config: RenderConfig = {
+        canvasSize: exportSize, bbox, zoomLevel,
+        routeWidth: routeWidth * (settings.width / CANVAS_SIZE.width),
+        roadWidth: roadWidth * (settings.width / CANVAS_SIZE.width),
+        waterWidth: waterWidth * (settings.width / CANVAS_SIZE.width),
+      };
 
-      // Save to history after successful export
-      if (state.trackData && canvasRef.current) {
-        const thumbnail = canvasRef.current.toDataURL('image/png', 0.3);
-        const item: HistoryItem = {
-          id: Date.now().toString(),
-          name: state.trackData.name || 'GPX 轨迹',
-          thumbnail,
-          trackData: state.trackData,
-          colorScheme: state.colorScheme,
-          annotations: state.annotations,
-          geoFeatures: state.geoFeatures,
-        };
-        setHistory(prev => [item, ...prev]);
+      // Create offscreen canvas for export
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = settings.width;
+      exportCanvas.height = settings.height;
+      const exportRenderer = new MapRenderer();
+      exportRenderer.init(exportCanvas, config);
+
+      const renderData: import('./types').RenderData = {
+        trackData: {
+          ...state.trackData,
+          trackPoints: smoothTrack(state.trackData.trackPoints, smoothness),
+        },
+        geoFeatures: state.geoFeatures,
+        colorScheme: state.colorScheme,
+        annotations: state.annotations,
+        renderConfig: config,
+      };
+
+      exportRenderer.renderSelective(renderData, settings.layers, !settings.layers.background);
+
+      const filename = state.trackData.name || 'gpx-map';
+
+      if (settings.format === 'svg') {
+        // SVG: transparent background, embed canvas content as PNG with alpha
+        const dataUrl = exportCanvas.toDataURL('image/png');
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${settings.width}" height="${settings.height}" viewBox="0 0 ${settings.width} ${settings.height}">
+  <image xlink:href="${dataUrl}" width="${settings.width}" height="${settings.height}"/>
+</svg>`;
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        triggerDownload(blob, `${filename}.svg`);
+      } else {
+        const mimeType = settings.format === 'jpg' ? 'image/jpeg' : 'image/png';
+        const quality = settings.format === 'jpg' ? 0.92 : undefined;
+        exportCanvas.toBlob((blob) => {
+          if (blob) triggerDownload(blob, `${filename}.${settings.format}`);
+        }, mimeType, quality);
       }
 
       setState(prev => ({ ...prev, isLoading: false }));
@@ -226,7 +283,18 @@ export default function App() {
         error: err instanceof Error ? err.message : '导出失败',
       }));
     }
-  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures]);
+  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, getBbox, routeWidth, roadWidth, waterWidth, smoothness]);
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handleRetry = useCallback(() => {
     setState(initialState);
@@ -351,6 +419,8 @@ export default function App() {
                   onRoadWidthChange={setRoadWidth}
                   waterWidth={waterWidth}
                   onWaterWidthChange={setWaterWidth}
+                  smoothness={smoothness}
+                  onSmoothnessChange={setSmoothness}
                 />
                 <button
                   data-testid="confirm-color-btn"
@@ -380,19 +450,7 @@ export default function App() {
             )}
 
             {state.step === 'export' && (
-              <div style={{ padding: 16 }}>
-                <p style={{ color: '#ccc', marginBottom: 16, fontSize: 14 }}>
-                  地图已准备就绪，点击下方按钮导出为 PNG 图片。
-                </p>
-                <button
-                  data-testid="export-btn"
-                  onClick={handleExport}
-                  disabled={state.isLoading}
-                  style={primaryBtnStyle}
-                >
-                  {state.isLoading ? '导出中…' : '导出 PNG'}
-                </button>
-              </div>
+              <ExportPanel isLoading={state.isLoading} onExport={handleExport} layers={exportLayers} onLayersChange={setExportLayers} />
             )}
           </div>
         </div>
