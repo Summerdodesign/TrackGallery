@@ -8,6 +8,8 @@ export interface PosterLayoutProps {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   hasWaypoints?: boolean;
   hasAnnotations?: boolean;
+  onCanvasClick?: (e: React.MouseEvent<HTMLCanvasElement>) => void;
+  canvasCursor?: string;
 }
 
 export function PosterLayout({
@@ -17,6 +19,8 @@ export function PosterLayout({
   canvasRef,
   hasWaypoints = false,
   hasAnnotations = false,
+  onCanvasClick,
+  canvasCursor,
 }: PosterLayoutProps) {
   return (
     <div
@@ -41,7 +45,7 @@ export function PosterLayout({
 
       {/* 地图区域 */}
       <div data-testid="map-section" style={{ position: 'relative', padding: '8px 0' }}>
-        <canvas ref={canvasRef} data-testid="map-canvas" style={{ display: 'block', width: '100%' }} />
+        <canvas ref={canvasRef} data-testid="map-canvas" onClick={onCanvasClick} style={{ display: 'block', width: '100%', cursor: canvasCursor || 'default' }} />
       </div>
     </div>
   );

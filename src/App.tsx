@@ -401,6 +401,8 @@ export default function App() {
                 canvasRef={canvasRef}
                 hasWaypoints={state.trackData.waypoints.length > 0}
                 hasAnnotations={state.annotations.length > 0}
+                onCanvasClick={handleCanvasClick}
+                canvasCursor={annotationAddMode ? 'crosshair' : undefined}
               />
             </div>
           </div>
@@ -438,6 +440,9 @@ export default function App() {
                   annotations={state.annotations}
                   trackPoints={state.trackData.trackPoints}
                   onChange={handleAnnotationsChange}
+                  onAddModeChange={setAnnotationAddMode}
+                  pendingTrackPointIndex={pendingTrackPointIndex}
+                  onPendingConsumed={() => setPendingTrackPointIndex(null)}
                 />
                 <button
                   data-testid="confirm-annotation-btn"
