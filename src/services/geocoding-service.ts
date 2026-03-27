@@ -25,12 +25,9 @@ export async function geocodePlace(
     });
     if (viewbox) {
       params.set('viewbox', `${viewbox.minLon},${viewbox.maxLat},${viewbox.maxLon},${viewbox.minLat}`);
-      params.set('bounded', '1');
     }
 
-    const resp = await fetch(`${NOMINATIM_URL}?${params}`, {
-      headers: { 'User-Agent': 'GPX-Stylized-Map/1.0' },
-    });
+    const resp = await fetch(`${NOMINATIM_URL}?${params}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const data = await resp.json();
@@ -47,7 +44,15 @@ export async function geocodePlace(
       position: { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) },
     };
   } catch (err) {
-    return { name, position: null, error: err instanceof Error ? err.message : '查询失败' };
+    const msg = err instanceof Error ? err.message : '查询失败';
+    // 检测常见的网络/代理错误
+    const isNetworkError = msg.includes('Failed to fetch') || msg.includes('NetworkError') ||
+      msg.includes('ECONNREFUSED') || msg.includes('net::') || msg.includes('proxy') ||
+      msg.includes('CORS') || msg.includes('TypeError');
+    const errorMsg = isNetworkError
+      ? '网络请求失败，可能被代理/防火墙拦截。请关闭代理后重试，或检查网络连接。'
+      : msg;
+    return { name, position: null, error: errorMsg };
   }
 }
 

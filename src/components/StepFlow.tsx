@@ -21,7 +21,7 @@ export function StepFlow({ currentStep, onStepChange }: StepFlowProps) {
       {STEPS.map((step, i) => {
         const isActive = step.key === currentStep;
         const isCompleted = i < currentIndex;
-        const canClick = isValidTransition(currentStep, step.key);
+        const canClick = isValidTransition(currentStep, step.key) || isCompleted;
 
         return (
           <div key={step.key} style={{ display: 'flex', alignItems: 'center' }}>

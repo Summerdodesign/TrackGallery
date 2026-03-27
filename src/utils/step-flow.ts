@@ -24,3 +24,12 @@ export function isValidTransition(current: FlowStep, next: FlowStep): boolean {
 export function getNextStep(current: FlowStep): FlowStep | null {
   return VALID_TRANSITIONS[current];
 }
+
+/**
+ * 获取当前步骤的上一个步骤，若无则返回 null
+ */
+export function getPrevStep(current: FlowStep): FlowStep | null {
+  const entries = Object.entries(VALID_TRANSITIONS) as [FlowStep, FlowStep | null][];
+  const found = entries.find(([, next]) => next === current);
+  return found ? found[0] : null;
+}

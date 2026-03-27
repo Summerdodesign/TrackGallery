@@ -12,7 +12,7 @@ import { calculateRouteStats } from './utils/route-stats';
 import { fetchRoads, fetchWaterways } from './services/overpass-service';
 import { MapRenderer } from './renderers/map-renderer';
 import { smoothTrack } from './utils/track-smoother';
-import { getNextStep } from './utils/step-flow';
+import { getNextStep, getPrevStep } from './utils/step-flow';
 import { ExportPanel } from './components/ExportPanel';
 import type { ExportSettings } from './components/ExportPanel';
 import type { FlowStep } from './types';
@@ -42,7 +42,12 @@ const initialState: AppState = {
 
 export default function App() {
   const [state, setState] = useState<AppState>(initialState);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('gpx-map-history');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [annotationAddMode, setAnnotationAddMode] = useState(false);
   const [pendingTrackPointIndex, setPendingTrackPointIndex] = useState<number | null>(null);
   const [routeWidth, setRouteWidth] = useState(2.5);
@@ -94,6 +99,15 @@ export default function App() {
     }
     return bboxRef.current;
   }, []);
+
+  // Persist history to localStorage
+  useEffect(() => {
+    try {
+      // Limit to 10 items and cap thumbnail size
+      const toSave = history.slice(0, 10);
+      localStorage.setItem('gpx-map-history', JSON.stringify(toSave));
+    } catch { /* storage full, ignore */ }
+  }, [history]);
 
   // Re-render map when colorScheme, annotations, or smoothness change
   useEffect(() => {
@@ -219,6 +233,11 @@ export default function App() {
     if (next) setState(prev => ({ ...prev, step: next }));
   }, []);
 
+  const handleGoBack = useCallback(() => {
+    const prev = getPrevStep(state.step);
+    if (prev) setState(s => ({ ...s, step: prev }));
+  }, [state.step]);
+
   const handleConfirmAnnotation = useCallback(() => {
     const next = getNextStep('annotation');
     if (next) setState(prev => ({ ...prev, step: next }));
@@ -343,6 +362,10 @@ export default function App() {
     }, 100);
   }, []);
 
+  const handleDeleteHistory = useCallback((id: string) => {
+    setHistory(prev => prev.filter(h => h.id !== id));
+  }, []);
+
   const stats = state.trackData ? calculateRouteStats(state.trackData) : null;
 
   return (
@@ -351,7 +374,17 @@ export default function App() {
         <h1 style={titleStyle}>GPX 风格化地图生成器</h1>
       </header>
 
-      <StepFlow currentStep={state.step} onStepChange={handleStepChange} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <StepFlow currentStep={state.step} onStepChange={handleStepChange} />
+        {state.step !== 'upload' && (
+          <button onClick={handleContinueUpload} style={{
+            padding: '5px 12px', borderRadius: 6, border: '1px solid #555',
+            background: 'transparent', color: '#aaa', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>
+            ＋ 新建项目
+          </button>
+        )}
+      </div>
 
       {/* Error banner */}
       {state.error && (
@@ -373,6 +406,43 @@ export default function App() {
       {state.step === 'upload' && (
         <div style={sectionStyle}>
           <Upload onUpload={handleUpload} isLoading={state.isLoading} />
+
+          {/* 历史项目列表 */}
+          {history.length > 0 && (
+            <div style={{ marginTop: 32 }}>
+              <div style={{ fontSize: 15, color: '#aaa', marginBottom: 12 }}>历史项目</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                {history.map(item => (
+                  <div key={item.id} style={{
+                    borderRadius: 8, border: '1px solid #333', overflow: 'hidden',
+                    background: '#1e1e1e', cursor: 'pointer', transition: 'border-color 0.2s',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#4a9eff')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#333')}
+                  >
+                    <div onClick={() => handleLoadHistory(item)}>
+                      {item.thumbnail && (
+                        <img src={item.thumbnail} alt={item.name}
+                          style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block', background: '#111' }} />
+                      )}
+                      <div style={{ padding: '8px 10px' }}>
+                        <div style={{ fontSize: 13, color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {item.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                          {item.trackData.trackPoints.length} 点 · {item.annotations.length} 标注
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeleteHistory(item.id)} style={{
+                      width: '100%', padding: '5px 0', border: 'none', borderTop: '1px solid #333',
+                      background: 'transparent', color: '#ff6b6b', fontSize: 11, cursor: 'pointer',
+                    }}>删除</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -412,6 +482,11 @@ export default function App() {
 
           {/* Side panel */}
           <div style={sidePanelStyle}>
+            {/* 返回上一步按钮 */}
+            {state.step !== 'colorScheme' && (
+              <button onClick={handleGoBack} style={backBtnStyle}>← 上一步</button>
+            )}
+
             {state.step === 'colorScheme' && (
               <>
                 <ColorSchemeEditor
@@ -588,4 +663,17 @@ const primaryBtnStyle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 600,
   cursor: 'pointer',
+};
+
+const backBtnStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  padding: '8px 16px',
+  border: 'none',
+  borderBottom: '1px solid #333',
+  background: 'transparent',
+  color: '#888',
+  fontSize: 13,
+  cursor: 'pointer',
+  textAlign: 'left',
 };

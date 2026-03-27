@@ -106,8 +106,17 @@ export function BatchAnnotationImport({
 
       {results.length > 0 && (
         <div style={{ marginTop: 8, fontSize: 12 }}>
-          <span style={{ color: '#66cc88' }}>✓ 成功 {foundCount} 个</span>
-          {failedCount > 0 && <span style={{ color: '#ff6b6b', marginLeft: 8 }}>✗ 失败 {failedCount} 个</span>}
+          {/* 检测是否全部因网络问题失败 */}
+          {failedCount > 0 && results.some(r => r.error?.includes('代理')) && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 6, marginBottom: 8,
+              background: 'rgba(255,180,0,0.12)', border: '1px solid rgba(255,180,0,0.3)', color: '#ffaa33', fontSize: 12,
+            }}>
+              ⚠ 地理编码请求被拦截，请关闭代理/VPN 后重试
+            </div>
+          )}
+          {foundCount > 0 && <span style={{ color: '#66cc88' }}>✓ 成功 {foundCount} 个</span>}
+          {failedCount > 0 && <span style={{ color: '#ff6b6b', marginLeft: foundCount > 0 ? 8 : 0 }}>✗ 失败 {failedCount} 个</span>}
           {results.filter(r => !r.found).map((r, i) => (
             <div key={i} style={{ color: '#ff6b6b', marginTop: 2 }}>· {r.name}: {r.error}</div>
           ))}
