@@ -16,9 +16,9 @@ import { smoothTrack } from './utils/track-smoother';
 import { getNextStep, getPrevStep } from './utils/step-flow';
 import { ExportPanel } from './components/ExportPanel';
 import { getCurrentUser, signOut } from './services/auth-service';
-import { saveProject, loadProjects, deleteProject } from './services/project-service';
+import { saveTrack, loadTracks, deleteTrack, toggleTrackVisibility } from './services/project-service';
+import type { TrackRecord } from './services/project-service';
 import type { UserProfile } from './services/supabase';
-import type { ProjectRecord } from './services/project-service';
 import type { ExportSettings } from './components/ExportPanel';
 import type { FlowStep } from './types';
 
@@ -49,7 +49,9 @@ const initialState: AppState = {
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [cloudProjects, setCloudProjects] = useState<ProjectRecord[]>([]);
+  const [cloudProjects, setCloudProjects] = useState<TrackRecord[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
   const [state, setState] = useState<AppState>(initialState);
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
@@ -90,11 +92,13 @@ export default function App() {
     });
   }, []);
 
-  // Load cloud projects when user changes
-  useEffect(() => {
+  // Load cloud tracks when user or search changes
+  const refreshTracks = useCallback(() => {
     if (!currentUser) { setCloudProjects([]); return; }
-    loadProjects(currentUser).then(({ projects }) => setCloudProjects(projects));
-  }, [currentUser]);
+    loadTracks(currentUser, searchQuery).then(({ tracks }) => setCloudProjects(tracks));
+  }, [currentUser, searchQuery]);
+
+  useEffect(() => { refreshTracks(); }, [refreshTracks]);
 
   // Persist history to localStorage
   useEffect(() => {
@@ -388,17 +392,18 @@ export default function App() {
 
     // Save to Supabase if logged in
     if (currentUser) {
-      const { id: cloudId, error } = await saveProject(
-        currentUser.id,
-        currentProjectId?.startsWith('cloud-') ? currentProjectId.replace('cloud-', '') : null,
+      const cloudId = currentProjectId?.startsWith('cloud-') ? currentProjectId.replace('cloud-', '') : null;
+      const { id: savedId, error } = await saveTrack(
+        currentUser,
+        cloudId,
         projectName || state.trackData.name || 'GPX 轨迹',
+        isPublic,
         projectData,
         thumbnail,
       );
-      if (cloudId) {
-        setCurrentProjectId('cloud-' + cloudId);
-        // Refresh cloud projects
-        loadProjects(currentUser).then(({ projects }) => setCloudProjects(projects));
+      if (savedId) {
+        setCurrentProjectId('cloud-' + savedId);
+        refreshTracks();
       }
       if (error) {
         setState(prev => ({ ...prev, error: '云端保存失败: ' + error }));
@@ -408,7 +413,7 @@ export default function App() {
     setCurrentProjectId(localId);
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2000);
-  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail, projectName, currentUser]);
+  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail, projectName, currentUser, isPublic, refreshTracks]);
 
   const handleGoHome = useCallback(() => {
     handleSaveProject();
@@ -424,12 +429,13 @@ export default function App() {
     setCloudProjects([]);
   }, []);
 
-  const handleLoadCloudProject = useCallback((project: ProjectRecord) => {
+  const handleLoadCloudProject = useCallback((track: TrackRecord) => {
     try {
-      const data = JSON.parse(project.data);
+      const data = JSON.parse(track.data);
       bboxRef.current = null;
-      setCurrentProjectId('cloud-' + project.id);
-      setProjectName(project.project_name);
+      setCurrentProjectId('cloud-' + track.id);
+      setProjectName(track.project_name);
+      setIsPublic(track.is_public);
       setState({
         step: 'colorScheme',
         gpxFile: null,
@@ -445,13 +451,11 @@ export default function App() {
     }
   }, []);
 
-  const handleDeleteCloudProject = useCallback(async (projectId: string) => {
-    const { error } = await deleteProject(projectId);
+  const handleDeleteCloudProject = useCallback(async (trackId: string) => {
+    const { error } = await deleteTrack(trackId);
     if (error) { setState(prev => ({ ...prev, error })); return; }
-    if (currentUser) {
-      loadProjects(currentUser).then(({ projects }) => setCloudProjects(projects));
-    }
-  }, [currentUser]);
+    refreshTracks();
+  }, [refreshTracks]);
 
   const stats = state.trackData ? calculateRouteStats(state.trackData) : null;
 
@@ -573,45 +577,68 @@ export default function App() {
             </div>
           )}
 
-          {/* 云端项目列表 */}
-          {cloudProjects.length > 0 && (
-            <div style={{ marginTop: 32 }}>
-              <div style={{ fontSize: 15, color: '#aaa', marginBottom: 12 }}>
-                {currentUser?.role === 'admin' ? '所有用户的云端项目' : '我的云端项目'}
+          {/* 云端轨迹 */}
+          <div style={{ marginTop: 32 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ fontSize: 15, color: '#aaa' }}>
+                {currentUser?.role === 'admin' ? '所有轨迹' : '我的轨迹'}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-                {cloudProjects.map(p => (
-                  <div key={p.id} style={{
-                    borderRadius: 8, border: '1px solid #333', overflow: 'hidden',
-                    background: '#1e1e1e', cursor: 'pointer', transition: 'border-color 0.2s',
-                  }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#4a9eff')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#333')}
-                  >
-                    <div onClick={() => handleLoadCloudProject(p)}>
-                      {p.thumbnail && (
-                        <img src={p.thumbnail} alt={p.project_name}
-                          style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block', background: '#111' }} />
-                      )}
-                      <div style={{ padding: '8px 10px' }}>
-                        <div style={{ fontSize: 13, color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {p.project_name}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-                          {currentUser?.role === 'admin' && p.username && <span style={{ color: '#4a9eff' }}>{p.username} · </span>}
-                          {new Date(p.updated_at).toLocaleDateString()}
-                        </div>
+              <input
+                type="text"
+                placeholder="搜索轨迹名称…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{
+                  padding: '6px 12px', borderRadius: 6, border: '1px solid #555',
+                  background: '#2a2a2a', color: '#eee', fontSize: 13, width: 200,
+                }}
+              />
+            </div>
+            {cloudProjects.length === 0 && (
+              <div style={{ color: '#666', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
+                {searchQuery ? '没有找到匹配的轨迹' : '暂无云端轨迹'}
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+              {cloudProjects.map(p => (
+                <div key={p.id} style={{
+                  borderRadius: 8, border: '1px solid #333', overflow: 'hidden',
+                  background: '#1e1e1e', cursor: 'pointer', transition: 'border-color 0.2s',
+                }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#4a9eff')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = '#333')}
+                >
+                  <div onClick={() => handleLoadCloudProject(p)}>
+                    {p.thumbnail && (
+                      <img src={p.thumbnail} alt={p.project_name}
+                        style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block', background: '#111' }} />
+                    )}
+                    <div style={{ padding: '8px 10px' }}>
+                      <div style={{ fontSize: 13, color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.project_name}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                        {currentUser?.role === 'admin' && p.creator_name && <span style={{ color: '#4a9eff' }}>{p.creator_name} · </span>}
+                        {p.is_public ? '🌐 公开' : '🔒 私有'} · {new Date(p.updated_at).toLocaleDateString()}
                       </div>
                     </div>
+                  </div>
+                  <div style={{ display: 'flex', borderTop: '1px solid #333' }}>
+                    {p.user_id === currentUser?.id && (
+                      <button onClick={async (e) => { e.stopPropagation(); await toggleTrackVisibility(p.id, !p.is_public); refreshTracks(); }} style={{
+                        flex: 1, padding: '5px 0', border: 'none', borderRight: '1px solid #333',
+                        background: 'transparent', color: '#4a9eff', fontSize: 11, cursor: 'pointer',
+                      }}>{p.is_public ? '设为私有' : '设为公开'}</button>
+                    )}
                     <button onClick={() => handleDeleteCloudProject(p.id)} style={{
-                      width: '100%', padding: '5px 0', border: 'none', borderTop: '1px solid #333',
+                      flex: 1, padding: '5px 0', border: 'none',
                       background: 'transparent', color: '#ff6b6b', fontSize: 11, cursor: 'pointer',
                     }}>删除</button>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -670,6 +697,10 @@ export default function App() {
                   fontSize: 14, boxSizing: 'border-box',
                 }}
               />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, color: '#888', cursor: 'pointer' }}>
+                <input type="checkbox" checked={isPublic} onChange={() => setIsPublic(p => !p)} style={{ accentColor: '#4a9eff' }} />
+                {isPublic ? '🌐 公开可见' : '🔒 仅自己可见'}
+              </label>
             </div>
 
             {state.step === 'colorScheme' && (

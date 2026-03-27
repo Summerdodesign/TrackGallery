@@ -1,36 +1,45 @@
 import { supabase } from './supabase';
 import type { UserProfile } from './supabase';
 
-export interface ProjectRecord {
+export interface TrackRecord {
   id: string;
   user_id: string;
+  creator_name: string;
   project_name: string;
-  data: string; // JSON stringified project data
+  is_public: boolean;
+  data: string;
   thumbnail: string;
   created_at: string;
   updated_at: string;
-  username?: string; // joined from profiles for admin view
 }
 
-export async function saveProject(userId: string, projectId: string | null, projectName: string, data: object, thumbnail: string): Promise<{ id: string | null; error: string | null }> {
+export async function saveTrack(
+  user: UserProfile,
+  trackId: string | null,
+  projectName: string,
+  isPublic: boolean,
+  data: object,
+  thumbnail: string,
+): Promise<{ id: string | null; error: string | null }> {
   const jsonData = JSON.stringify(data);
 
-  if (projectId) {
-    // Update existing
-    const { error } = await supabase.from('projects').update({
+  if (trackId) {
+    const { error } = await supabase.from('tracks').update({
       project_name: projectName,
+      is_public: isPublic,
       data: jsonData,
       thumbnail,
       updated_at: new Date().toISOString(),
-    }).eq('id', projectId);
+    }).eq('id', trackId);
     if (error) return { id: null, error: error.message };
-    return { id: projectId, error: null };
+    return { id: trackId, error: null };
   }
 
-  // Insert new
-  const { data: result, error } = await supabase.from('projects').insert({
-    user_id: userId,
+  const { data: result, error } = await supabase.from('tracks').insert({
+    user_id: user.id,
+    creator_name: user.username,
     project_name: projectName,
+    is_public: isPublic,
     data: jsonData,
     thumbnail,
   }).select('id').single();
@@ -39,26 +48,34 @@ export async function saveProject(userId: string, projectId: string | null, proj
   return { id: result.id, error: null };
 }
 
-export async function loadProjects(user: UserProfile): Promise<{ projects: ProjectRecord[]; error: string | null }> {
-  let query = supabase.from('projects').select('*, profiles(username)').order('updated_at', { ascending: false });
+export async function loadTracks(
+  _user: UserProfile,
+  search?: string,
+): Promise<{ tracks: TrackRecord[]; error: string | null }> {
+  let query = supabase
+    .from('tracks')
+    .select('*')
+    .order('updated_at', { ascending: false });
 
-  // Non-admin users only see their own projects
-  if (user.role !== 'admin') {
-    query = query.eq('user_id', user.id);
+  // Search by project name
+  if (search?.trim()) {
+    query = query.ilike('project_name', `%${search.trim()}%`);
   }
 
+  // RLS handles visibility: users see own + public, admins see all
   const { data, error } = await query;
-  if (error) return { projects: [], error: error.message };
-
-  const projects: ProjectRecord[] = (data || []).map((p: Record<string, unknown>) => ({
-    ...p,
-    username: (p.profiles as Record<string, string>)?.username,
-  })) as ProjectRecord[];
-
-  return { projects, error: null };
+  if (error) return { tracks: [], error: error.message };
+  return { tracks: (data || []) as TrackRecord[], error: null };
 }
 
-export async function deleteProject(projectId: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('projects').delete().eq('id', projectId);
+export async function deleteTrack(trackId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('tracks').delete().eq('id', trackId);
+  return { error: error?.message ?? null };
+}
+
+export async function toggleTrackVisibility(
+  trackId: string, isPublic: boolean
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('tracks').update({ is_public: isPublic }).eq('id', trackId);
   return { error: error?.message ?? null };
 }
