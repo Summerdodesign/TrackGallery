@@ -60,7 +60,7 @@ export class MapRenderer {
     this.renderContextLayer(data.geoFeatures, data.colorScheme, data.renderConfig.roadWidth ?? 3, data.renderConfig.waterWidth ?? 4);
     this.renderRouteLayer(data.trackData.trackPoints, data.colorScheme, data.renderConfig.routeWidth ?? 2.5);
     this.renderWaypointLayer(data.trackData.waypoints, data.colorScheme, data.trackData.trackPoints);
-    this.renderAnnotationLayer(data.annotations);
+    this.renderAnnotationLayer(data.annotations, data.renderConfig.annotationFontSize ?? 108);
   }
 
   /**
@@ -86,7 +86,7 @@ export class MapRenderer {
     if (layers.route) {
       this.renderRouteLayer(data.trackData.trackPoints, data.colorScheme, data.renderConfig.routeWidth ?? 2.5);
       this.renderWaypointLayer(data.trackData.waypoints, data.colorScheme, data.trackData.trackPoints);
-      this.renderAnnotationLayer(data.annotations);
+      this.renderAnnotationLayer(data.annotations, data.renderConfig.annotationFontSize ?? 108);
     }
   }
 
@@ -180,35 +180,63 @@ export class MapRenderer {
   /**
    * 绘制标注层：图标 emoji + 文字说明
    */
-  renderAnnotationLayer(annotations: RouteAnnotation[]): void {
+  renderAnnotationLayer(annotations: RouteAnnotation[], fontSize: number = 108): void {
     const ctx = this.getContext();
     const config = this.getConfig();
+    const iconSize = Math.round(fontSize * 1.3);
+    const offsetY = -Math.round(fontSize * 1.5);
 
     for (const annotation of annotations) {
       const px = this.toPixel(annotation.position, config);
       const emoji = ICON_EMOJI[annotation.icon] || '📍';
 
-      // 绘制图标
-      ctx.font = '16px serif';
+      // 标注点标记（小圆点）
+      ctx.beginPath();
+      ctx.arc(px.x, px.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fill();
+
+      // 图标偏移到上方
+      ctx.font = `${iconSize}px serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(emoji, px.x, px.y - 4);
+      ctx.fillText(emoji, px.x, px.y + offsetY);
 
-      // 绘制文字标签
+      // 连接线
+      ctx.beginPath();
+      ctx.moveTo(px.x, px.y - 8);
+      ctx.lineTo(px.x, px.y + offsetY + 4);
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // 文字标签
       if (annotation.label) {
-        ctx.font = '11px sans-serif';
-        ctx.fillStyle = '#FFFFFF';
+        ctx.font = `bold ${fontSize}px sans-serif`;
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
+        ctx.textBaseline = 'bottom';
 
-        // 文字背景
         const metrics = ctx.measureText(annotation.label);
         const textWidth = metrics.width;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(px.x - textWidth / 2 - 3, px.y + 2, textWidth + 6, 16);
+        const textY = px.y + offsetY - iconSize - 8;
+
+        // 圆角背景
+        const bgPad = Math.round(fontSize * 0.3);
+        const bgH = Math.round(fontSize * 1.2);
+        const bgR = Math.round(fontSize * 0.2);
+        const bgX = px.x - textWidth / 2 - bgPad;
+        const bgW = textWidth + bgPad * 2;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.beginPath();
+        ctx.moveTo(bgX + bgR, textY - bgH);
+        ctx.arcTo(bgX + bgW, textY - bgH, bgX + bgW, textY, bgR);
+        ctx.arcTo(bgX + bgW, textY, bgX, textY, bgR);
+        ctx.arcTo(bgX, textY, bgX, textY - bgH, bgR);
+        ctx.arcTo(bgX, textY - bgH, bgX + bgW, textY - bgH, bgR);
+        ctx.fill();
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(annotation.label, px.x, px.y + 4);
+        ctx.fillText(annotation.label, px.x, textY - Math.round(fontSize * 0.1));
       }
     }
   }

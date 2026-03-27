@@ -117,6 +117,7 @@ export interface RenderConfig {
   routeWidth?: number;
   roadWidth?: number;
   waterWidth?: number;
+  annotationFontSize?: number;
 }
 
 /** 渲染数据 */

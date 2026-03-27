@@ -4,6 +4,7 @@ import { PRESET_SCHEMES } from './constants';
 import { Upload } from './components/Upload';
 import { ColorSchemeEditor } from './components/ColorSchemeEditor';
 import { AnnotationEditor, findNearestTrackPoint } from './components/AnnotationEditor';
+import { BatchAnnotationImport } from './components/BatchAnnotationImport';
 import { PosterLayout } from './components/PosterLayout';
 import { StepFlow } from './components/StepFlow';
 import { calculateBoundingBox, expandBoundingBox, calculateZoomLevel, geoToPixel } from './utils/viewport-calculator';
@@ -48,6 +49,7 @@ export default function App() {
   const [roadWidth, setRoadWidth] = useState(3);
   const [waterWidth, setWaterWidth] = useState(4);
   const [smoothness, setSmoothness] = useState(0);
+  const [annotationFontSize, setAnnotationFontSize] = useState(108);
   const [exportLayers, setExportLayers] = useState<import('./components/ExportPanel').ExportLayers>({ background: true, route: true, roads: true, water: true });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapSectionRef = useRef<HTMLDivElement>(null);
@@ -107,7 +109,7 @@ export default function App() {
     const zoomLevel = calculateZoomLevel(bbox, CANVAS_SIZE);
     const config: RenderConfig = {
       canvasSize: CANVAS_SIZE, bbox, zoomLevel,
-      routeWidth, roadWidth, waterWidth,
+      routeWidth, roadWidth, waterWidth, annotationFontSize,
     };
     const renderer = rendererRef.current;
     renderer.init(canvas, config);
@@ -125,7 +127,7 @@ export default function App() {
     } else {
       renderer.render(renderData);
     }
-  }, [state.colorScheme, state.annotations, state.trackData, state.geoFeatures, state.step, getBbox, routeWidth, roadWidth, waterWidth, smoothness, exportLayers]);
+  }, [state.colorScheme, state.annotations, state.trackData, state.geoFeatures, state.step, getBbox, routeWidth, roadWidth, waterWidth, smoothness, exportLayers, annotationFontSize]);
 
   // Handle GPX upload success
   const handleUpload = useCallback(async (trackData: TrackData) => {
@@ -235,6 +237,7 @@ export default function App() {
         routeWidth: routeWidth * (settings.width / CANVAS_SIZE.width),
         roadWidth: roadWidth * (settings.width / CANVAS_SIZE.width),
         waterWidth: waterWidth * (settings.width / CANVAS_SIZE.width),
+        annotationFontSize: annotationFontSize * (settings.width / CANVAS_SIZE.width),
       };
 
       // Create offscreen canvas for export
@@ -283,7 +286,7 @@ export default function App() {
         error: err instanceof Error ? err.message : '导出失败',
       }));
     }
-  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, getBbox, routeWidth, roadWidth, waterWidth, smoothness]);
+  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, getBbox, routeWidth, roadWidth, waterWidth, smoothness, annotationFontSize]);
 
   const triggerDownload = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -423,6 +426,8 @@ export default function App() {
                   onWaterWidthChange={setWaterWidth}
                   smoothness={smoothness}
                   onSmoothnessChange={setSmoothness}
+                  annotationFontSize={annotationFontSize}
+                  onAnnotationFontSizeChange={setAnnotationFontSize}
                 />
                 <button
                   data-testid="confirm-color-btn"
@@ -443,6 +448,21 @@ export default function App() {
                   onAddModeChange={setAnnotationAddMode}
                   pendingTrackPointIndex={pendingTrackPointIndex}
                   onPendingConsumed={() => setPendingTrackPointIndex(null)}
+                />
+                <div style={{ padding: '0 16px 8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <label style={{ width: 120, fontSize: 13, color: '#ccc', flexShrink: 0 }}>标注字体</label>
+                    <input type="range" min={24} max={300} step={6} value={annotationFontSize}
+                      onChange={(e) => setAnnotationFontSize(parseInt(e.target.value))} style={{ flex: 1 }} />
+                    <span style={{ fontSize: 13, color: '#ccc', minWidth: 42, textAlign: 'right' }}>{annotationFontSize}px</span>
+                  </div>
+                </div>
+                <BatchAnnotationImport
+                  trackPoints={state.trackData.trackPoints}
+                  bbox={getBbox(state.trackData)}
+                  canvasSize={CANVAS_SIZE}
+                  existingAnnotations={state.annotations}
+                  onImport={handleAnnotationsChange}
                 />
                 <button
                   data-testid="confirm-annotation-btn"

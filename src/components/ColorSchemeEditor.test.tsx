@@ -23,6 +23,8 @@ function renderEditor(overrides?: Partial<{ colorScheme: ColorScheme; onChange: 
       onWaterWidthChange={vi.fn()}
       smoothness={0}
       onSmoothnessChange={vi.fn()}
+      annotationFontSize={108}
+      onAnnotationFontSizeChange={vi.fn()}
     />,
   );
   return { onChange, onRouteWidthChange };
