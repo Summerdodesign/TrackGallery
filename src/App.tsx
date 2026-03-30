@@ -24,17 +24,6 @@ import type { FlowStep } from './types';
 
 const CANVAS_SIZE = { width: 4000, height: 4000 };
 
-interface HistoryItem {
-  id: string;
-  name: string;
-  projectName: string;
-  thumbnail: string;
-  trackData: TrackData;
-  colorScheme: ColorScheme;
-  annotations: RouteAnnotation[];
-  geoFeatures: GeoFeature[];
-}
-
 const initialState: AppState = {
   step: 'upload',
   gpxFile: null,
@@ -53,12 +42,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   const [state, setState] = useState<AppState>(initialState);
-  const [history, setHistory] = useState<HistoryItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('gpx-map-history');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
   const [annotationAddMode, setAnnotationAddMode] = useState(false);
   const [pendingTrackPointIndex, setPendingTrackPointIndex] = useState<number | null>(null);
   const [routeWidth, setRouteWidth] = useState(2.5);
@@ -113,15 +96,6 @@ export default function App() {
     if (currentUser) refreshTracks();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
-
-  // Persist history to localStorage
-  useEffect(() => {
-    try {
-      // Limit to 10 items and cap thumbnail size
-      const toSave = history.slice(0, 10);
-      localStorage.setItem('gpx-map-history', JSON.stringify(toSave));
-    } catch { /* storage full, ignore */ }
-  }, [history]);
 
   // Re-render map when colorScheme, annotations, or smoothness change
   useEffect(() => {
@@ -337,30 +311,6 @@ export default function App() {
     setState(initialState);
   }, []);
 
-  const handleLoadHistory = useCallback((item: HistoryItem) => {
-    bboxRef.current = null;
-    setCurrentProjectId(item.id);
-    setProjectName(item.projectName || item.name);
-    setState({
-      step: 'colorScheme',
-      gpxFile: null,
-      trackData: item.trackData,
-      colorScheme: item.colorScheme,
-      annotations: item.annotations,
-      geoFeatures: item.geoFeatures,
-      isLoading: false,
-      error: null,
-    });
-    setTimeout(() => {
-      mapSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  }, []);
-
-  const handleDeleteHistory = useCallback((id: string) => {
-    setHistory(prev => prev.filter(h => h.id !== id));
-  }, []);
-
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const cloudIdRef = useRef<string | null>(null);
   const [saveToast, setSaveToast] = useState(false);
 
@@ -388,24 +338,7 @@ export default function App() {
       geoFeatures: state.geoFeatures,
     };
 
-    // Save to localStorage (local history)
-    const localId = currentProjectId || Date.now().toString();
-    const item: HistoryItem = {
-      id: localId,
-      name: state.trackData.name || 'GPX 轨迹',
-      projectName,
-      thumbnail,
-      trackData: state.trackData,
-      colorScheme: state.colorScheme,
-      annotations: state.annotations,
-      geoFeatures: state.geoFeatures,
-    };
-    setHistory(prev => {
-      const filtered = prev.filter(h => h.id !== localId);
-      return [item, ...filtered];
-    });
-
-    // Save to Supabase if logged in
+    // Save to Supabase
     if (currentUser) {
       // Use ref to get the latest cloud ID (avoids stale closure)
       const existingCloudId = cloudIdRef.current;
@@ -419,17 +352,11 @@ export default function App() {
       );
       if (savedId) {
         cloudIdRef.current = savedId;
-        setCurrentProjectId('cloud-' + savedId);
-      } else {
-        setCurrentProjectId(localId);
       }
       if (error) {
         setState(prev => ({ ...prev, error: '云端保存失败: ' + error }));
-        setCurrentProjectId(localId);
       }
       refreshTracks();
-    } else {
-      setCurrentProjectId(localId);
     }
 
     setSaveToast(true);
@@ -441,7 +368,6 @@ export default function App() {
     setState(initialState);
     bboxRef.current = null;
     cloudIdRef.current = null;
-    setCurrentProjectId(null);
     setProjectName('');
   }, [handleSaveProject]);
 
@@ -456,7 +382,6 @@ export default function App() {
       const data = JSON.parse(track.data);
       bboxRef.current = null;
       cloudIdRef.current = track.id;
-      setCurrentProjectId('cloud-' + track.id);
       setProjectName(track.project_name);
       setIsPublic(track.is_public);
       setState({
@@ -562,43 +487,6 @@ export default function App() {
       {state.step === 'upload' && (
         <div style={sectionStyle}>
           <Upload onUpload={handleUpload} isLoading={state.isLoading} />
-
-          {/* 历史项目列表 */}
-          {history.length > 0 && (
-            <div style={{ marginTop: 32 }}>
-              <div style={{ fontSize: 15, color: '#aaa', marginBottom: 12 }}>历史项目</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-                {history.map(item => (
-                  <div key={item.id} style={{
-                    borderRadius: 8, border: '1px solid #333', overflow: 'hidden',
-                    background: '#1e1e1e', cursor: 'pointer', transition: 'border-color 0.2s',
-                  }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#4a9eff')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#333')}
-                  >
-                    <div onClick={() => handleLoadHistory(item)}>
-                      {item.thumbnail && (
-                        <img src={item.thumbnail} alt={item.name}
-                          style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block', background: '#111' }} />
-                      )}
-                      <div style={{ padding: '8px 10px' }}>
-                        <div style={{ fontSize: 13, color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {item.projectName || item.name}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-                          {item.trackData.trackPoints.length} 点 · {item.annotations.length} 标注
-                        </div>
-                      </div>
-                    </div>
-                    <button onClick={() => handleDeleteHistory(item.id)} style={{
-                      width: '100%', padding: '5px 0', border: 'none', borderTop: '1px solid #333',
-                      background: 'transparent', color: '#ff6b6b', fontSize: 11, cursor: 'pointer',
-                    }}>删除</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* 云端轨迹 */}
           <div style={{ marginTop: 32 }}>
