@@ -361,6 +361,7 @@ export default function App() {
   }, []);
 
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const cloudIdRef = useRef<string | null>(null);
   const [saveToast, setSaveToast] = useState(false);
 
   /** 生成小尺寸缩略图，避免 localStorage 爆掉 */
@@ -406,16 +407,18 @@ export default function App() {
 
     // Save to Supabase if logged in
     if (currentUser) {
-      const cloudId = currentProjectId?.startsWith('cloud-') ? currentProjectId.replace('cloud-', '') : null;
+      // Use ref to get the latest cloud ID (avoids stale closure)
+      const existingCloudId = cloudIdRef.current;
       const { id: savedId, error } = await saveTrack(
         currentUser,
-        cloudId,
+        existingCloudId,
         projectName || state.trackData.name || 'GPX 轨迹',
         isPublic,
         projectData,
         thumbnail,
       );
       if (savedId) {
+        cloudIdRef.current = savedId;
         setCurrentProjectId('cloud-' + savedId);
       } else {
         setCurrentProjectId(localId);
@@ -431,12 +434,13 @@ export default function App() {
 
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2000);
-  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail, projectName, currentUser, isPublic, refreshTracks]);
+  }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, generateThumbnail, projectName, currentUser, isPublic, refreshTracks]);
 
   const handleGoHome = useCallback(() => {
     handleSaveProject();
     setState(initialState);
     bboxRef.current = null;
+    cloudIdRef.current = null;
     setCurrentProjectId(null);
     setProjectName('');
   }, [handleSaveProject]);
@@ -451,6 +455,7 @@ export default function App() {
     try {
       const data = JSON.parse(track.data);
       bboxRef.current = null;
+      cloudIdRef.current = track.id;
       setCurrentProjectId('cloud-' + track.id);
       setProjectName(track.project_name);
       setIsPublic(track.is_public);
