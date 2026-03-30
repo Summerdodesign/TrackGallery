@@ -101,7 +101,18 @@ export default function App() {
     });
   }, [currentUser, searchQuery]);
 
-  useEffect(() => { refreshTracks(); }, [refreshTracks]);
+  // Refresh on user change (with small delay to ensure auth session is ready)
+  useEffect(() => {
+    if (!currentUser) { setCloudProjects([]); return; }
+    const timer = setTimeout(() => refreshTracks(), 300);
+    return () => clearTimeout(timer);
+  }, [currentUser, refreshTracks]);
+
+  // Also refresh when search query changes
+  useEffect(() => {
+    if (currentUser) refreshTracks();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   // Persist history to localStorage
   useEffect(() => {
@@ -475,7 +486,7 @@ export default function App() {
 
       {/* Login page */}
       {!authLoading && !currentUser && (
-        <LoginPage onLogin={(user) => setCurrentUser(user)} />
+        <LoginPage onLogin={(user) => { setCurrentUser(user); }} />
       )}
 
       {/* Main app (logged in) */}
