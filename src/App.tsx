@@ -312,7 +312,7 @@ export default function App() {
   }, []);
 
   const cloudIdRef = useRef<string | null>(null);
-  const [saveToast, setSaveToast] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
 
   /** 生成小尺寸缩略图，避免 localStorage 爆掉 */
   const generateThumbnail = useCallback((): string => {
@@ -359,12 +359,12 @@ export default function App() {
       refreshTracks();
     }
 
-    setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 2000);
+    setSaveToast('项目已保存');
+    setTimeout(() => setSaveToast(null), 2000);
   }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, generateThumbnail, projectName, currentUser, isPublic, refreshTracks]);
 
-  const handleGoHome = useCallback(() => {
-    handleSaveProject();
+  const handleGoHome = useCallback(async () => {
+    await handleSaveProject();
     setState(initialState);
     bboxRef.current = null;
     cloudIdRef.current = null;
@@ -403,6 +403,8 @@ export default function App() {
     if (!window.confirm('确定要删除这个轨迹吗？此操作不可撤销。')) return;
     const { error } = await deleteTrack(trackId);
     if (error) { setState(prev => ({ ...prev, error })); return; }
+    setSaveToast('删除成功');
+    setTimeout(() => setSaveToast(null), 2000);
     refreshTracks();
   }, [refreshTracks]);
 
@@ -464,7 +466,7 @@ export default function App() {
           padding: '10px 24px', borderRadius: 8, background: 'rgba(0,200,100,0.9)',
           color: '#fff', fontSize: 14, fontWeight: 600, zIndex: 999,
         }}>
-          ✓ 项目已保存
+          ✓ {saveToast}
         </div>
       )}
 
@@ -536,16 +538,18 @@ export default function App() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', borderTop: '1px solid #333' }}>
-                    {p.user_id === currentUser?.id && (
+                    {(p.user_id === currentUser?.id || currentUser?.role === 'admin') && (
                       <button onClick={async (e) => { e.stopPropagation(); if (!window.confirm(p.is_public ? '确定设为私有？' : '确定设为公开？')) return; await toggleTrackVisibility(p.id, !p.is_public); refreshTracks(); }} style={{
                         flex: 1, padding: '5px 0', border: 'none', borderRight: '1px solid #333',
                         background: 'transparent', color: '#4a9eff', fontSize: 11, cursor: 'pointer',
                       }}>{p.is_public ? '设为私有' : '设为公开'}</button>
                     )}
-                    <button onClick={() => handleDeleteCloudProject(p.id)} style={{
-                      flex: 1, padding: '5px 0', border: 'none',
-                      background: 'transparent', color: '#ff6b6b', fontSize: 11, cursor: 'pointer',
-                    }}>删除</button>
+                    {(p.user_id === currentUser?.id || currentUser?.role === 'admin') && (
+                      <button onClick={() => handleDeleteCloudProject(p.id)} style={{
+                        flex: 1, padding: '5px 0', border: 'none',
+                        background: 'transparent', color: '#ff6b6b', fontSize: 11, cursor: 'pointer',
+                      }}>删除</button>
+                    )}
                   </div>
                 </div>
               ))}
