@@ -400,6 +400,7 @@ export default function App() {
   }, []);
 
   const handleDeleteCloudProject = useCallback(async (trackId: string) => {
+    if (!window.confirm('确定要删除这个轨迹吗？此操作不可撤销。')) return;
     const { error } = await deleteTrack(trackId);
     if (error) { setState(prev => ({ ...prev, error })); return; }
     refreshTracks();
@@ -536,7 +537,7 @@ export default function App() {
                   </div>
                   <div style={{ display: 'flex', borderTop: '1px solid #333' }}>
                     {p.user_id === currentUser?.id && (
-                      <button onClick={async (e) => { e.stopPropagation(); await toggleTrackVisibility(p.id, !p.is_public); refreshTracks(); }} style={{
+                      <button onClick={async (e) => { e.stopPropagation(); if (!window.confirm(p.is_public ? '确定设为私有？' : '确定设为公开？')) return; await toggleTrackVisibility(p.id, !p.is_public); refreshTracks(); }} style={{
                         flex: 1, padding: '5px 0', border: 'none', borderRight: '1px solid #333',
                         background: 'transparent', color: '#4a9eff', fontSize: 11, cursor: 'pointer',
                       }}>{p.is_public ? '设为私有' : '设为公开'}</button>
