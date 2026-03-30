@@ -95,7 +95,10 @@ export default function App() {
   // Load cloud tracks when user or search changes
   const refreshTracks = useCallback(() => {
     if (!currentUser) { setCloudProjects([]); return; }
-    loadTracks(currentUser, searchQuery).then(({ tracks }) => setCloudProjects(tracks));
+    loadTracks(currentUser, searchQuery).then(({ tracks, error }) => {
+      setCloudProjects(tracks);
+      if (error) console.warn('loadTracks error:', error);
+    });
   }, [currentUser, searchQuery]);
 
   useEffect(() => { refreshTracks(); }, [refreshTracks]);
@@ -403,14 +406,18 @@ export default function App() {
       );
       if (savedId) {
         setCurrentProjectId('cloud-' + savedId);
-        refreshTracks();
+      } else {
+        setCurrentProjectId(localId);
       }
       if (error) {
         setState(prev => ({ ...prev, error: '云端保存失败: ' + error }));
+        setCurrentProjectId(localId);
       }
+      refreshTracks();
+    } else {
+      setCurrentProjectId(localId);
     }
 
-    setCurrentProjectId(localId);
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2000);
   }, [state.trackData, state.colorScheme, state.annotations, state.geoFeatures, currentProjectId, generateThumbnail, projectName, currentUser, isPublic, refreshTracks]);
