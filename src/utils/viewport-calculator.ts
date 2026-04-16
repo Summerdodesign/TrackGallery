@@ -84,6 +84,7 @@ export function calculateZoomLevel(bbox: BoundingBox, canvasSize: Size): number 
 
 /**
  * 使用 Web Mercator 投影将地理坐标转换为画布像素坐标
+ * 保持等比例缩放，地图居中显示，不会被拉伸变形
  * @param point 地理坐标点
  * @param bbox 边界框
  * @param canvasSize 画布尺寸
@@ -93,11 +94,20 @@ export function geoToPixel(point: GeoPoint, bbox: BoundingBox, canvasSize: Size)
   const mercatorX = (lon: number) => lon * (Math.PI / 180);
   const mercatorY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
 
-  const x = ((mercatorX(point.lon) - mercatorX(bbox.minLon)) /
-    (mercatorX(bbox.maxLon) - mercatorX(bbox.minLon))) * canvasSize.width;
+  const bboxMercatorWidth = mercatorX(bbox.maxLon) - mercatorX(bbox.minLon);
+  const bboxMercatorHeight = mercatorY(bbox.maxLat) - mercatorY(bbox.minLat);
 
-  const y = ((mercatorY(bbox.maxLat) - mercatorY(point.lat)) /
-    (mercatorY(bbox.maxLat) - mercatorY(bbox.minLat))) * canvasSize.height;
+  // 计算等比例缩放：取宽高中较小的缩放比，保持比例不变形
+  const scaleX = bboxMercatorWidth > 0 ? canvasSize.width / bboxMercatorWidth : 1;
+  const scaleY = bboxMercatorHeight > 0 ? canvasSize.height / bboxMercatorHeight : 1;
+  const scale = Math.min(scaleX, scaleY);
+
+  // 居中偏移
+  const offsetX = (canvasSize.width - bboxMercatorWidth * scale) / 2;
+  const offsetY = (canvasSize.height - bboxMercatorHeight * scale) / 2;
+
+  const x = (mercatorX(point.lon) - mercatorX(bbox.minLon)) * scale + offsetX;
+  const y = (mercatorY(bbox.maxLat) - mercatorY(point.lat)) * scale + offsetY;
 
   return { x, y };
 }

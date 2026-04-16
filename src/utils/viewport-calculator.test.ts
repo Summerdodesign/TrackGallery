@@ -114,22 +114,29 @@ describe('geoToPixel', () => {
   const bbox: BoundingBox = { minLat: 30, maxLat: 31, minLon: 120, maxLon: 121 };
   const canvas = { width: 800, height: 600 };
 
-  it('should map bbox corners to canvas corners', () => {
-    // Bottom-left corner of bbox → (0, height)
+  it('should map bbox corners preserving aspect ratio', () => {
+    // With aspect-ratio-preserving projection, corners map with centering offset
     const bl = geoToPixel({ lat: 30, lon: 120 }, bbox, canvas);
-    expect(bl.x).toBeCloseTo(0);
-    expect(bl.y).toBeCloseTo(600);
-
-    // Top-right corner of bbox → (width, 0)
     const tr = geoToPixel({ lat: 31, lon: 121 }, bbox, canvas);
-    expect(tr.x).toBeCloseTo(800);
-    expect(tr.y).toBeCloseTo(0);
+
+    // The mapped region should be centered and fit within canvas
+    expect(bl.x).toBeGreaterThanOrEqual(0);
+    expect(bl.y).toBeLessThanOrEqual(600);
+    expect(tr.x).toBeLessThanOrEqual(800);
+    expect(tr.y).toBeGreaterThanOrEqual(0);
+
+    // Opposite corners should be symmetric around canvas center
+    expect(bl.x + tr.x).toBeCloseTo(800);
+    expect(bl.y + tr.y).toBeCloseTo(600, 0);
   });
 
-  it('should map top-left corner correctly', () => {
+  it('should map top-left corner with centering offset', () => {
     const tl = geoToPixel({ lat: 31, lon: 120 }, bbox, canvas);
-    expect(tl.x).toBeCloseTo(0);
-    expect(tl.y).toBeCloseTo(0);
+    const br = geoToPixel({ lat: 30, lon: 121 }, bbox, canvas);
+
+    // Top-left and bottom-right should be symmetric around center
+    expect(tl.x + br.x).toBeCloseTo(800);
+    expect(tl.y + br.y).toBeCloseTo(600, 0);
   });
 
   it('should map center point approximately to canvas center', () => {
